@@ -1,25 +1,141 @@
 ---
 title: "Reproducible Research: Peer Assessment 1"
-output: 
-  html_document:
-    keep_md: true
+author: "Pedro Velázquez"
+output: html_document
+keep_md: true
 ---
+
+```{r,include=FALSE}
+knitr::opts_chunk$set(warning=FALSE)
+```
 
 
 ## Loading and preprocessing the data
 
+First I'm going to load the ggplot2 library so I can make all the plots required. Then I'm going to upload the csv file stored in my work directory. Also, as I'm going to work with a date type variable I'm going to transform it to a POSIXct format so I can work better with it.
+
+```{r}
+library(ggplot2)
+
+activity <- read.csv("/Users/pedrovela/Downloads/activity.csv")
+
+# Transform the date variable to a POXIXct format so we can work with it 
+activity$date <- as.POSIXct(activity$date, "%Y-%m-%d")
+weekday <- weekdays(activity$date)
+activity <- cbind(activity,weekday)
+```
 
 
 ## What is mean total number of steps taken per day?
 
+In this section I'm going to make the histogram about the total number of steps taken per day
 
+```{r}
+total_steps <- with(activity, aggregate(steps, by = list(date), FUN = sum, na.rm = TRUE))
+names(total_steps) <- c("date", "steps")
+hist(total_steps$steps, main = "Total number of steps taken per day", xlab = "Total steps taken per day", col = "green",breaks = 10)
+```
+
+In a first instance, I created the histogram without the "breaks" parameter and it looked a little ambigous, so I added the parameter set to 10 and now it can be seen more obvious the frequency of the data and here we can see that the steps with more frequency is about 11000 per day. 
+
+Now, let's calculate the median and mean of the total number of steps taken per day
+
+```{r}
+me_steps <- median(total_steps$steps)
+```
+
+```{r}
+mea_steps <- mean(total_steps$steps)
+```
+
+From here we can conclude that the median is equal to `r me_steps` and the mean is equal to `r mea_steps`, they are close but the mean is lower than the median.
 
 ## What is the average daily activity pattern?
 
+First, with the R command "aggregate", I'm going to calculate the mean of the daily activity pattern and then I'm going to call the plot function to make the time series.
 
+```{r}
+av_activity <- aggregate(activity$steps, by=list(activity$interval), FUN=mean, na.rm=TRUE)
+names(av_activity) <- c("interval", "mean")
+plot(av_activity$interval, av_activity$mean, type = "l", col="red", lwd = 2, xlab="Interval", ylab="Average number of steps", main="Average number of steps per intervals")
+```
+
+Now, to answer the question "Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?" I'm going to use the new data frame I created "av_activity" and filter by the mean with the function "which.max".
+
+```{r}
+max_interval <- av_activity[which.max(av_activity$mean), ]$interval
+```
+
+So here we can see that the interval `r max_interval` contains the maximum number of steps 
 
 ## Imputing missing values
 
+The first thing to do is to calculate the total count of missing values in the data frame, for this, I'm going to use the sum function with a boolean argument 
 
+```{r}
+na_val <- sum(is.na(activity$steps))
+```
+
+From here, we note that the total number of missing values is `r na_val` 
+
+Now, as strategy to fill the missing values I'm going to calculate the mean.
+
+```{r}
+new_steps <- av_activity$mean[match(activity$interval, av_activity$interval)]
+```
+
+The next step is to create the new data set but same as the original but with the new steps calculated above (new_steps)
+
+```{r}
+#Put the new values with the transform function and the ifelse function 
+new_activity <- transform(activity, steps = ifelse(is.na(activity$steps),new_steps,
+                                                       activity$steps))
+#Create the data frame
+new_total_steps <- aggregate(steps ~ date, new_activity, sum)
+names(new_total_steps) <- c("date", "daily_steps")
+```
+
+Finally, let's repeat the first question but now with the new data frame. First, the histogram:
+
+```{r}
+hist(new_total_steps$daily_steps, col = "blue", xlab = "Total steps per day", main = "Total number of steps taken each day", breaks = 10)
+```
+
+We can see a slight difference respect to the first histogram. Now, let's csalculate the median and the mean:
+
+```{r}
+new_mean <- mean(new_total_steps$daily_steps)
+```
+
+```{r}
+new_median <- median(new_total_steps$daily_steps)
+```
+
+From here, we can see that the new mean is `r new_mean` and the new median is `r new_median`, these are, in fact, different from the first mean and median calculated respectively (`r mea_steps`,`r me_steps`). The impact of the missing values here is that decreases both values.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+First, I'm going to create the new factor variable according to the day, for this I'm going to use the sapply function with a new one as an argument
+
+```{r}
+#transform the variable
+activity$date <- as.Date(strptime(activity$date, format="%Y-%m-%d"))
+#Create the new column with the sapply function and a new one 
+activity$datetype <- sapply(activity$date, function(x) {
+        if (weekdays(x) == "Saturday" | weekdays(x) == "Sunday") 
+                {y <- "Weekend"} else 
+                {y <- "Weekday"}
+                y
+        })
+```
+
+Now, let's create the plot according to the new factor variable with the ggplot function
+
+```{r}
+activity_date <- aggregate(steps~interval + datetype, activity, mean, na.rm = TRUE)
+plot<- ggplot(activity_date, aes(x = interval , y = steps, color = datetype)) +
+       geom_line() +
+       labs(title = "Average daily steps by type of date", x = "Interval", y = "Average number of steps") +
+       facet_wrap(~datetype, ncol = 1, nrow=2)
+print(plot)
+```
